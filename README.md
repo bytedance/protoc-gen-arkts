@@ -1,12 +1,4 @@
 
-<!--Original Files：protoc-gen-ts (https://github.com/thesayyn/protoc-gen-ts)-->
-<!--Copyright (c) 2024 Sahin Yort-->
-<!--SPDX-License-Identifier: MIT-->
-
-<!--Protoc Gen ArkTs -->
-
-
-
 ## Proctoc-gen-arkts
 [![License](https://img.shields.io/badge/MIT-blue.svg)](https://opensource.org/license/MIT)
 
@@ -144,8 +136,8 @@ when the compilation is completed, the protoc-gen-arkts will appear in target/de
 ```harmony dependencies
 - "google-protobuf": "3.21.2"
 - "js-base64": "3.7.7"
-
 ```
+add dependencies to the oh-package.json5 file in the project
 
 
 ## test

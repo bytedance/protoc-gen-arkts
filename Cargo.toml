@@ -1,8 +1,8 @@
 [package]
 name = "protoc_gen_arkts"
-version = "0.1.0"
-authors = ["Sahin <thesayyn@gmail.com>"]
-edition = "2018"
+version = "0.0.1"
+authors = ["xingxing <wanglijie.skin@bytedance.com>"]
+edition = "2024"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
