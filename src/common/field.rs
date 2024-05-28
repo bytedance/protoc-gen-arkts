@@ -1,3 +1,11 @@
+ /**
+  * Copyright 2024 ByteDance and/or its affiliates
+  *
+  * Original Files：protoc-gen-ts (https://github.com/thesayyn/protoc-gen-ts)
+  * Copyright (c) 2024 Sahin Yort
+  * SPDX-License-Identifier: MIT 
+ */
+
 use crate::{
     context::{Context, Syntax},
     descriptor::FieldDescriptorProto,
@@ -118,7 +126,10 @@ impl FieldDescriptorProto {
         if self.is_string() {
             Some(crate::lit_str!("").into())
         } else if self.is_bigint() {
-            Some(crate::lit_bigint!(0.into()).into())
+            Some(crate::call_expr!(
+                quote_ident!("BigInt").into(),
+                vec![crate::expr_or_spread!(crate::lit_num!(0).into())]
+            ))
         } else if self.is_number() {
             Some(crate::lit_num!(0).into())
         } else if self.is_booelan() {
@@ -150,14 +161,10 @@ impl FieldDescriptorProto {
         } else if self.is_string() {
             quote_str!(self.default_value()).into()
         } else if self.is_bigint() {
-            crate::lit_bigint!(self
-                .default_value
-                .clone()
-                .unwrap_or("0".to_string())
-                .parse::<num_bigint::BigInt>()
-                .expect("can not parse the default")
-                .into())
-            .into()
+            crate::call_expr!(
+                quote_ident!("BigInt").into(),
+                vec![crate::expr_or_spread!(crate::lit_num!(0).into())]
+            )
         } else if self.is_number() {
             crate::lit_num!(self
                 .default_value

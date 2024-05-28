@@ -197,7 +197,9 @@ impl<'a> Context<'a> {
             return name.to_string();
         }
         let mut ns = vec![];
-        ns.extend(self.namespace.clone());
+        if self.options.with_namespace {
+            ns.extend(self.namespace.clone());
+        }
         ns.push(name.to_string());
         ns.join(".").replace(".", "_")
     }

@@ -1,3 +1,11 @@
+ /**
+  * Copyright 2024 ByteDance and/or its affiliates
+  *
+  * Original Files：protoc-gen-ts (https://github.com/thesayyn/protoc-gen-ts)
+  * Copyright (c) 2024 Sahin Yort
+  * SPDX-License-Identifier: MIT 
+ */
+
 use core::panic;
 use std::string::String;
 
@@ -9,7 +17,8 @@ pub struct Options {
     pub runtime_package: String,
     pub base64_package: String,
     pub namespaces: bool,
-    pub import_suffix: String
+    pub import_suffix: String,
+    pub with_namespace: bool
 }
 
 impl Options {
@@ -21,6 +30,7 @@ impl Options {
         let mut unary_rpc_promise = false;
         let mut namespaces = false;
         let mut import_suffix = "";
+        let mut with_namespace = true;
 
         let parts = raw.split(",");
 
@@ -51,12 +61,15 @@ impl Options {
                     namespaces = false
                 }  
                 "namespaces" => {
-                    panic!("namespaces are broken!");
-                    // namespaces = kv.next().expect("expected a value for unary_rpc_promise") == "true"
+                    // panic!("namespaces are broken!");
+                    namespaces = kv.next().expect("expected a value for unary_rpc_promise") == "true"
                 }
                 "import_suffix" => {
                     import_suffix = kv.next().expect("expected a value for import_suffix")
                 }
+                "with_namespace" => {
+                    with_namespace = kv.next().expect("expected a value for extend namespace ") == "true";
+                },
                 // just silently ignore
                 option => {
                     eprintln!("WARNING: unknown option {}", option)
@@ -71,7 +84,8 @@ impl Options {
             import_suffix: import_suffix.to_string(),
             base64_package: base64_package.to_string(),
             namespaces,
-            unary_rpc_promise
+            unary_rpc_promise,
+            with_namespace
         }
     }
 }

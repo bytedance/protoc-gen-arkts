@@ -1,5 +1,5 @@
 [package]
-name = "protoc_gen_ts"
+name = "protoc_gen_arkts"
 version = "0.1.0"
 authors = ["Sahin <thesayyn@gmail.com>"]
 edition = "2018"
@@ -8,12 +8,10 @@ edition = "2018"
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "protoc-gen-ts"
+name = "protoc-gen-arkts"
 path = "src/main.rs"
 
-[[bin]]
-name = "ast-dump"
-path = "tests/helper/ast.rs"
+
 
 [dependencies]
 swc_atoms = "0.5.5"

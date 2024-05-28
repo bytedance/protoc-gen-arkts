@@ -1,3 +1,11 @@
+ /**
+  * Copyright 2024 ByteDance and/or its affiliates
+  *
+  * Original Files：protoc-gen-ts (https://github.com/thesayyn/protoc-gen-ts)
+  * Copyright (c) 2024 Sahin Yort
+  * SPDX-License-Identifier: MIT 
+ */
+
 use super::GooglePBRuntime;
 use crate::common::field;
 use crate::{context::Context, descriptor};
@@ -91,6 +99,9 @@ impl GooglePBRuntime {
             )]
         ))];
 
+        stmts.push(crate::expr_stmt!(Expr::Ident(quote_ident!("let key = entry[0]"))));
+        stmts.push(crate::expr_stmt!(Expr::Ident(quote_ident!("let value = entry[1]"))));
+
         stmts.append(&mut self.serialize_setup_inner(
             ctx,
             &descriptor,
@@ -101,18 +112,16 @@ impl GooglePBRuntime {
 
         stmts.push(crate::expr_stmt!(crate::call_expr!(
             crate::member_expr!("bw", "endSubMessage"),
-            vec![crate::expr_or_spread!(Expr::Lit(crate::lit_num!(
-                field.number()
-            )))]
+            vec![]
+            // vec![crate::expr_or_spread!(Expr::Lit(crate::lit_num!(
+            //     field.number()
+            // )))]
         )));
 
         Stmt::ForOf(ForOfStmt {
             is_await: false,
-            left: ForHead::VarDecl(Box::new(crate::array_var_decl!(vec![
-                Some(crate::binding_ident!("key")),
-                Some(crate::binding_ident!("value"))
-            ]))),
-            right: Box::new(crate::member_expr!("this", field.name())),
+            left: ForHead::Pat(Box::new(crate::pat_ident!(quote_ident!("let entry")))),
+            right: Box::new(crate::member_expr_bare!(crate::member_expr!("this", field.name()), "entries()")),
             body: Box::new(Stmt::Block(BlockStmt {
                 span: DUMMY_SP,
                 stmts,
@@ -135,8 +144,10 @@ impl GooglePBRuntime {
 
         if create_bw {
             let import = ctx.get_import(&ctx.options.runtime_package);
-            let bw_decl_init = crate::new_expr!(crate::member_expr!(import, "BinaryWriter"));
-            let bw_decl = Stmt::Decl(crate::const_decl!("bw", bw_decl_init));
+            let bw_decl_init = crate::new_expr!(crate::member_expr!(import.clone(), "BinaryWriter"));
+            let bw_decl = Stmt::Decl(
+                crate::const_decl!(
+                    format!("{}: {}.BinaryWriter", "bw", import.clone().as_ref()), bw_decl_init));
             stmts.push(bw_decl)
         }
 
@@ -203,28 +214,28 @@ impl GooglePBRuntime {
 
         // serialize unknown fields
         if create_bw {
-            stmts.push(Stmt::ForOf(ForOfStmt {
-                is_await: false,
-                left: ForHead::VarDecl(Box::new(crate::const_decl_uinit!("uf"))),
-                right: Box::new(crate::member_expr!("this", "#unknown_fields")),
-                body: Box::new(Stmt::Block(BlockStmt {
-                    span: DUMMY_SP,
-                    stmts: vec![
-                        crate::expr_stmt!(crate::call_expr!(
-                            crate::member_expr!("bw", "writeFieldHeader_"),
-                            vec![
-                                crate::expr_or_spread!(crate::member_expr!("uf", "no")),
-                                crate::expr_or_spread!(crate::member_expr!("uf", "wireType"))
-                            ]
-                        )),
-                        crate::expr_stmt!(crate::call_expr!(
-                            crate::member_expr!("bw", "appendUint8Array_"),
-                            vec![crate::expr_or_spread!(crate::member_expr!("uf", "data")),]
-                        )),
-                    ],
-                })),
-                span: DUMMY_SP,
-            }));
+            // stmts.push(Stmt::ForOf(ForOfStmt {
+            //     is_await: false,
+            //     left: ForHead::VarDecl(Box::new(crate::const_decl_uinit!("uf"))),
+            //     right: Box::new(crate::member_expr!("this", "#unknown_fields")),
+            //     body: Box::new(Stmt::Block(BlockStmt {
+            //         span: DUMMY_SP,
+            //         stmts: vec![
+            //             crate::expr_stmt!(crate::call_expr!(
+            //                 crate::member_expr!("bw", "writeFieldHeader_"),
+            //                 vec![
+            //                     crate::expr_or_spread!(crate::member_expr!("uf", "no")),
+            //                     crate::expr_or_spread!(crate::member_expr!("uf", "wireType"))
+            //                 ]
+            //             )),
+            //             crate::expr_stmt!(crate::call_expr!(
+            //                 crate::member_expr!("bw", "appendUint8Array_"),
+            //                 vec![crate::expr_or_spread!(crate::member_expr!("uf", "data")),]
+            //             )),
+            //         ],
+            //     })),
+            //     span: DUMMY_SP,
+            // }));
         }
 
         stmts

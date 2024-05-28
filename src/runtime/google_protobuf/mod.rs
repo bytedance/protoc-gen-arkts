@@ -1,3 +1,11 @@
+ /**
+  * Copyright 2024 ByteDance and/or its affiliates
+  *
+  * Original Files：protoc-gen-ts (https://github.com/thesayyn/protoc-gen-ts)
+  * Copyright (c) 2024 Sahin Yort
+  * SPDX-License-Identifier: MIT 
+ */
+
 use crate::common::field;
 use crate::{
     context::Context,
@@ -84,7 +92,7 @@ impl GooglePBRuntime {
         field: &FieldDescriptorProto,
     ) -> String {
         let mut placeholder = format!("{}", rw);
-        if field.is_packed(ctx) && rw == "write" {
+        if field.is_packed(ctx){
             placeholder = format!("{}Packed", rw);
         }
         match field.type_() {

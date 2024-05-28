@@ -1,0 +1,43 @@
+syntax = "proto3";
+package struct_pkg;
+
+enum Enum {
+    ENUM_0 = 0;
+    ENUM_1 = 1;
+}
+
+message Common {
+	string common_id = 1;
+	int64 common_type = 2;
+}
+
+message Struct {
+  string field_string = 1;
+  repeated string field_string_list = 2;
+  int32 field_i32 = 3;
+  repeated int32 field_i32_list = 4;
+  int64 field_i64 = 5;
+  repeated int64 field_i64_list = 6;
+  bool field_boolean = 7;
+  repeated bool field_boolean_list = 8;
+
+  bytes field_bytes = 9;
+  repeated bytes field_bytes_list = 10;
+
+  Enum field_enum = 11;
+  repeated Enum field_enum_list = 12;
+
+  Common field_common_struct = 13;
+  repeated Common field_common_struct_list = 14;
+
+  map<string, string> field_map_string_string = 15;
+  map<string, int32> field_map_string_i32 = 16;
+  map<int64, int64> field_map_i64_i64 = 17;
+  map<int64, string> field_map_i64_string = 18;  
+}
+
+
+message Struct2 {
+  uint32 field_uint32 = 1;
+}
+

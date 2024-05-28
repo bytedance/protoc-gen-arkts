@@ -1,17 +1,25 @@
-use std::fmt::{Display, LowerExp};
+ /**
+  * Copyright 2024 ByteDance and/or its affiliates
+  *
+  * Original Files：protoc-gen-ts (https://github.com/thesayyn/protoc-gen-ts)
+  * Copyright (c) 2024 Sahin Yort
+  * SPDX-License-Identifier: MIT 
+ */
+
+use std::fmt::{format, Display, LowerExp};
 use std::vec;
 
 use crate::context::Syntax;
 use crate::descriptor::field_descriptor_proto::Type;
-use crate::descriptor::DescriptorProto;
+use crate::descriptor::{DescriptorProto, FileDescriptorProto};
 use crate::{context::Context, descriptor::FieldDescriptorProto};
 
 use super::field::FieldAccessorFn;
 use convert_case::{Case, Casing};
+use protobuf::well_known_types::struct_::value;
 use swc_common::DUMMY_SP;
 use swc_ecma_ast::{
-    ArrayLit, ArrayPat, BinaryOp, BlockStmt, ClassMember, ClassMethod, Expr, Function, MethodKind,
-    ObjectLit, Param, Pat, PatOrExpr, PropName, Stmt, UnaryOp,
+    ArrayLit, ArrayPat, BinaryOp, BlockStmt, ClassMember, ClassMethod, Expr, Function, MethodKind, ObjectLit, Param, Pat, PatOrExpr, PropName, Stmt, TsType, UnaryOp, TsNonNullExpr
 };
 use swc_ecma_utils::{quote_ident, quote_str};
 
@@ -297,7 +305,7 @@ impl FieldDescriptorProto {
         if self.has_json_name() {
             self.json_name().to_string()
         } else {
-            self.name().to_case(Case::Camel)
+            self.name().to_string()
         }
     }
 
@@ -319,17 +327,23 @@ impl FieldDescriptorProto {
     ) -> Expr {
         let accessor = accessor_fn(self);
         if self.is_enum() {
-            crate::bin_expr!(
-                crate::member_expr_computed!(ctx.lazy_type_ref(self.type_name()).into(), accessor),
-                accessor_fn(self).into(),
-                BinaryOp::NullishCoalescing
-            )
+            crate::call_expr!(crate::member_expr_bare!(accessor_fn(self), "valueOf"))
+
+            // crate::bin_expr!(
+            //     crate::member_expr_computed!(ctx.lazy_type_ref(self.type_name()).into(), accessor),
+            //     accessor_fn(self).into(),
+            //     BinaryOp::NullishCoalescing
+            // )
         } else if self.is_bytes() {
             let base64 = ctx.get_import(ctx.options.base64_package.as_str());
             crate::call_expr!(
-                crate::member_expr!(base64, "encode"),
+                crate::member_expr!(base64, "fromUint8Array"),
                 vec![crate::expr_or_spread!(accessor)]
             )
+            // crate::call_expr!(
+            //     crate::member_expr!(base64, "encode"),
+            //     vec![crate::expr_or_spread!(accessor)]
+            // )
         } else if self.is_bigint() {
             crate::call_expr!(crate::member_expr_bare!(accessor, "toString"))
         } else if self.is_number() {
@@ -376,9 +390,13 @@ impl FieldDescriptorProto {
         } else if self.is_bytes() {
             let base64 = ctx.get_import(ctx.options.base64_package.as_str());
             crate::call_expr!(
-                crate::member_expr!(base64, "decode"),
+                crate::member_expr!(base64, "toUint8Array"),
                 vec![crate::expr_or_spread!(accessor)]
             )
+            // crate::call_expr!(
+            //     crate::member_expr!(base64, "decode"),
+            //     vec![crate::expr_or_spread!(accessor)]
+            // )
         } else if self.is_bigint() {
             crate::call_expr!(
                 quote_ident!("BigInt").into(),
@@ -406,16 +424,56 @@ impl FieldDescriptorProto {
 }
 
 impl DescriptorProto {
-    pub(super) fn print_to_json(&self, ctx: &mut Context) -> ClassMember {
-        let mut statements = vec![Stmt::Decl(crate::const_decl!(
-            "json",
-            Expr::Object(ObjectLit {
-                span: DUMMY_SP,
-                props: vec![]
-            })
-        ))];
+    fn get_map_field_descriptor_str(&self, field: &FieldDescriptorProto) -> &str {
+        if field.is_string() {
+            "string"
+        } else if field.is_bigint() {
+            "bigint"
+        } else if field.is_number() {
+            "number"
+        } else if field.is_booelan() {
+            "boolean"
+        } else if field.is_bytes() {
+            "Uint8Array"
+        } else {
+            "object"
+        }
+    }
 
-        for field in self.field.clone() {
+    fn get_field_descriptor_str(&self, ctx: &mut Context, field: &FieldDescriptorProto) -> String {
+            let base = if field.is_string() {
+                ": string".to_string()
+            } else if field.is_bigint() {
+                ": bigint".to_string()
+            } else if field.is_number() || field.is_enum() {
+                ": number".to_string()
+            } else if field.is_booelan() {
+                ": boolean".to_string()
+            } else if field.is_bytes() {
+                ": string".to_string()
+            } else if field.is_map(ctx) {
+                let descriptor = ctx
+                    .get_map_type(field.type_name())
+                    .expect(format!("can not find the map type {}", field.type_name()).as_str());
+                let key_type = self.get_map_field_descriptor_str(&descriptor.field[0]);
+                let value_type = self.get_map_field_descriptor_str(&descriptor.field[1]);
+                format!(": Map<{},{}>", key_type, value_type)
+            } else {
+                ": object".to_string()
+            };
+            
+            if field.is_repeated() && !field.is_map(ctx)  {
+                format!("{}[]", base)
+            } else {
+                base
+            }
+    }
+     
+
+    fn print_to_json_inner(&self, ctx: &mut Context, index: i32, fields: &Vec<&FieldDescriptorProto>) -> ClassMember {
+        let mut statements = vec![];
+
+        for field in fields {
             let accessor_fn = if field.is_repeated() && !field.is_map(ctx) {
                 super::field::static_field_member
             } else {
@@ -423,48 +481,40 @@ impl DescriptorProto {
             };
 
             let mut value_expr = field.into_to_json_expr(ctx, accessor_fn);
+            let mut stmts = vec![];
 
             if field.is_map(ctx) {
                 let descriptor = ctx
                     .get_map_type(field.type_name())
                     .expect(format!("can not find the map type {}", field.type_name()).as_str());
-                let key_field = &descriptor.field[0];
-                let value_field = &descriptor.field[1];
-                value_expr = crate::call_expr!(
-                    crate::member_expr!("Array", "from"),
-                    vec![crate::expr_or_spread!(value_expr)]
-                );
-                if !(key_field.is_string() && value_field.is_string()) {
-                    value_expr = crate::call_expr!(
-                        crate::member_expr_bare!(value_expr, "map"),
-                        vec![crate::expr_or_spread!(crate::arrow_func_short!(
-                            Expr::Array(ArrayLit {
-                                span: DUMMY_SP,
-                                elems: vec![
-                                    Some(crate::expr_or_spread!(
-                                        key_field.into_to_stringified_map_expr(ctx)
-                                    )),
-                                    Some(crate::expr_or_spread!(
-                                        value_field.into_to_stringified_map_expr(ctx)
-                                    ))
+                let key_type: &str = self.get_map_field_descriptor_str(&descriptor.field[0]);
+                let valur_type: &str = self.get_map_field_descriptor_str(&descriptor.field[1]);
+              
+                stmts.push(crate::expr_stmt!(
+                    Expr::Ident(quote_ident!(
+                        format!("json[\"{}\"] = new Map<{},{}>()", field.name(), key_type, valur_type)))));
+                stmts.push(crate::expr_stmt!(crate::call_expr!(
+                    crate::member_expr_bare!( crate::member_expr!("this", field.name()), "forEach"),
+                    vec![crate::expr_or_spread!(crate::arrow_func!(
+                        vec![crate::pat_ident!(quote_ident!("value")), crate::pat_ident!(quote_ident!("key"))],
+                        vec![
+                            crate::expr_stmt!(crate::call_expr!(
+                                crate::member_expr_bare!(
+                                    crate::member_expr_computed!(Expr::Ident(quote_ident!("json")), Expr::Ident(quote_ident!(format!("\"{}\"", field.name())))), "set"),
+                                vec![
+                                    crate::expr_or_spread!(Expr::TsNonNull(TsNonNullExpr {
+                                        expr: Box::new(Expr::Ident(quote_ident!("key"))),
+                                        span: DUMMY_SP
+                                    })),
+                                    crate::expr_or_spread!(Expr::TsNonNull(TsNonNullExpr {
+                                        expr: Box::new(Expr::Ident(quote_ident!("value"))),
+                                        span: DUMMY_SP
+                                    })),
                                 ]
-                            }),
-                            vec![Pat::Array(ArrayPat {
-                                optional: false,
-                                elems: vec![
-                                    Some(crate::pat_ident!(quote_ident!(key_field.name()))),
-                                    Some(crate::pat_ident!(quote_ident!(value_field.name())))
-                                ],
-                                span: DUMMY_SP,
-                                type_ann: None
-                            })]
-                        ))]
-                    );
-                }
-                value_expr = crate::call_expr!(
-                    crate::member_expr!("Object", "fromEntries"),
-                    vec![crate::expr_or_spread!(value_expr)]
-                );
+                            ))
+                        ]
+                    ))]
+                )))
             } else if field.is_repeated() {
                 value_expr = crate::call_expr!(
                     crate::member_expr_bare!(crate::member_expr!("this", field.name()), "map"),
@@ -475,18 +525,94 @@ impl DescriptorProto {
                 );
             }
 
-            statements.push(crate::if_stmt!(
-                field.default_value_bin_expr(ctx, super::field::this_field_member),
-                crate::expr_stmt!(crate::assign_expr!(
-                    PatOrExpr::Expr(Box::new(crate::member_expr!("json", field.json_key_name()))),
-                    value_expr
+            if field.is_map(ctx) {
+                statements.push(crate::if_stmt!(
+                    field.default_value_bin_expr(ctx, super::field::this_field_member),
+                    crate::block_stmt!(stmts)
                 ))
-            ))
+            } else {
+                statements.push(crate::if_stmt!(
+                    field.default_value_bin_expr(ctx, super::field::this_field_member),
+                    crate::expr_stmt!(crate::assign_expr!(
+                        PatOrExpr::Expr(Box::new(crate::member_expr_computed!(Expr::Ident(quote_ident!("json")), Expr::Ident(quote_ident!(format!("\"{}\"", field.json_key_name())))))),
+                        value_expr
+                    ))
+                ))
+            }
+            
+        }
+
+        ClassMember::Method(ClassMethod {
+            span: DUMMY_SP,
+            accessibility: None,
+            key: PropName::Ident(quote_ident!(format!("toJson_{}", index))),
+            is_abstract: false,
+            is_optional: false,
+            is_override: false,
+            is_static: false,
+            function: Box::new(Function {
+                body: Some(BlockStmt {
+                    span: DUMMY_SP,
+                    stmts: statements,
+                }),
+                decorators: vec![],
+                is_async: false,
+                is_generator: false,
+                params: vec![Param {
+                    span: DUMMY_SP,
+                    decorators: vec![],
+                    pat: swc_ecma_ast::Pat::Ident(swc_ecma_ast::BindingIdent {
+                        id: quote_ident!("json"),
+                        type_ann: Some(Box::new(crate::type_annotation!("object"))),
+                    }),
+                }   
+                ],
+                return_type: None,
+                span: DUMMY_SP,
+                type_params: None,
+            }),
+            kind: MethodKind::Method,
+        })
+    }
+
+    pub(super) fn print_to_json(&self, ctx: &mut Context) -> Vec<ClassMember> {
+        let mut statements = vec![Stmt::Decl(crate::const_decl!(
+            "json: object",
+            crate::new_expr!(Expr::Ident(quote_ident!("Object")))
+        ))];
+        let mut class_member_vec = Vec::new();
+        let mut cur_field_vec = Vec::new();
+        let mut cur_method_index = 0;
+
+        let mut newst = |fields: &Vec<&FieldDescriptorProto>, index: i32| { 
+            class_member_vec.push(self.print_to_json_inner(ctx, index, fields));
+            // call inner method
+            statements.push(crate::expr_stmt!(crate::call_expr!(
+                crate::member_expr_bare!(Expr::Ident(quote_ident!("this")), format!("toJson_{}", index)),
+                vec![
+                    crate::expr_or_spread!(Expr::Ident(quote_ident!("json")))
+                ]
+            )));
+        };
+
+
+        for field in &self.field {
+            cur_field_vec.push(field);
+            if cur_field_vec.len() >= 30 {
+                // add class member
+                newst(&cur_field_vec, cur_method_index);
+                cur_method_index += 1;
+                cur_field_vec.clear();
+            }
+        }
+    
+        if !cur_field_vec.is_empty() {
+            newst(&cur_field_vec, cur_method_index);
         }
 
         statements.push(crate::return_stmt!(quote_ident!("json").into()));
 
-        ClassMember::Method(ClassMethod {
+        let to_json_class_member = ClassMember::Method(ClassMethod {
             span: DUMMY_SP,
             accessibility: None,
             key: PropName::Ident(quote_ident!("toJson")),
@@ -503,27 +629,19 @@ impl DescriptorProto {
                 is_async: false,
                 is_generator: false,
                 params: vec![],
-                return_type: None,
+                return_type: Some(Box::new(crate::type_annotation!("Object"))),
                 span: DUMMY_SP,
                 type_params: None,
             }),
             kind: MethodKind::Method,
-        })
+        });
+        class_member_vec.push(to_json_class_member);
+        class_member_vec
     }
 
-    pub(super) fn print_from_json(&self, ctx: &mut Context) -> ClassMember {
-        let mut statements = vec![
-            Stmt::Decl(crate::const_decl!(
-                "message",
-                crate::new_expr!(Expr::Ident(quote_ident!(ctx.normalize_name(self.name()))))
-            )),
-            Stmt::Decl(crate::const_decl!(
-                "oneof",
-                crate::new_expr!(Expr::Ident(quote_ident!("Set")))
-            )),
-        ];
-
-        for field in self.field.clone() {
+   fn print_from_json_inner(&self, ctx: &mut Context, index: i32, fields: &Vec<&FieldDescriptorProto>) -> ClassMember {
+        let mut statements = vec![];
+        for field in fields {
             let accessor_fn = if field.is_repeated() && !field.is_map(ctx) {
                 super::field::static_field_member
             } else {
@@ -531,50 +649,36 @@ impl DescriptorProto {
             };
 
             let mut value_expr = field.into_from_json_expr(ctx, accessor_fn);
+            if field.is_enum() {
+                if field.is_repeated() {
+                    value_expr = Expr::Ident(quote_ident!("r"));
+                } else {
+                    value_expr = Expr::Ident(quote_ident!(format!("{}",field.name())));
+                }
+            } 
 
             if field.is_map(ctx) {
-                let descriptor = ctx
-                    .get_map_type(field.type_name())
-                    .expect(format!("can not find the map type {}", field.type_name()).as_str());
-                let key_field = &descriptor.field[0];
-                let value_field = &descriptor.field[1];
                 value_expr = crate::call_expr!(
-                    crate::member_expr!("Object", "entries"),
-                    vec![crate::expr_or_spread!(value_expr)]
-                );
-                if !(key_field.is_string() && value_field.is_string()) {
-                    value_expr = crate::call_expr!(
-                        crate::member_expr_bare!(value_expr, "map"),
-                        vec![crate::expr_or_spread!(crate::arrow_func_short!(
-                            Expr::Array(ArrayLit {
-                                span: DUMMY_SP,
-                                elems: vec![
-                                    Some(crate::expr_or_spread!(key_field
-                                        .into_from_json_expr_for_map_key(
-                                            ctx,
-                                            super::field::bare_field_member
-                                        ))),
-                                    Some(crate::expr_or_spread!(value_field.into_from_json_expr(
-                                        ctx,
-                                        super::field::bare_field_member
-                                    )))
+                    crate::member_expr_bare!(Expr::Ident(quote_ident!(field.name())), "forEach"),
+                    vec![crate::expr_or_spread!(crate::arrow_func!(
+                        vec![crate::pat_ident!(quote_ident!("value")), crate::pat_ident!(quote_ident!("key"))],
+                        vec![
+                            crate::expr_stmt!(crate::call_expr!(
+                                crate::member_expr_bare!(
+                                    crate::member_expr!("jsonMessage", format!("{}?", field.name())), "set"),
+                                vec![
+                                    crate::expr_or_spread!(Expr::TsNonNull(TsNonNullExpr {
+                                        expr: Box::new(Expr::Ident(quote_ident!("key"))),
+                                        span: DUMMY_SP
+                                    })),
+                                    crate::expr_or_spread!(Expr::TsNonNull(TsNonNullExpr {
+                                        expr: Box::new(Expr::Ident(quote_ident!("value"))),
+                                        span: DUMMY_SP
+                                    })),
                                 ]
-                            }),
-                            vec![Pat::Array(ArrayPat {
-                                optional: false,
-                                elems: vec![
-                                    Some(crate::pat_ident!(quote_ident!(key_field.name()))),
-                                    Some(crate::pat_ident!(quote_ident!(value_field.name())))
-                                ],
-                                span: DUMMY_SP,
-                                type_ann: None
-                            })]
-                        ))]
-                    );
-                }
-                value_expr = crate::new_expr!(
-                    quote_ident!("Map").into(),
-                    vec![crate::expr_or_spread!(value_expr)]
+                            ))
+                        ]
+                    ))]
                 );
             } else if field.is_repeated() {
                 value_expr = crate::call_expr!(
@@ -582,7 +686,7 @@ impl DescriptorProto {
                     vec![crate::expr_or_spread!(crate::arrow_func!(
                         vec![crate::pat_ident!(quote_ident!("r"))],
                         vec![
-                            field.value_check_stmt(ctx, super::field::static_field_member),
+                            // field.value_check_stmt(ctx, super::field::static_field_member),
                             crate::return_stmt!(value_expr)
                         ]
                     ))]
@@ -591,9 +695,9 @@ impl DescriptorProto {
 
             let mut stmts = vec![];
 
-            if !field.is_repeated() {
-                stmts.push(field.value_check_stmt(ctx, accessor_fn))
-            }
+//             if !field.is_repeated() {
+//                 stmts.push(field.value_check_stmt(ctx, accessor_fn))
+//             }
             if field.has_oneof_index() {
                 stmts.push(crate::if_stmt!(
                     crate::call_expr!(
@@ -618,30 +722,125 @@ impl DescriptorProto {
                     )]
                 )))
             }
-            stmts.push(crate::expr_stmt!(crate::assign_expr!(
-                PatOrExpr::Expr(Box::new(crate::member_expr!("message", field.name()))),
-                value_expr
-            )));
+            if field.is_map(ctx) {
+                // nothing
+                stmts.push(crate::expr_stmt!(value_expr))
+            } else {
+                stmts.push(crate::expr_stmt!(crate::assign_expr!(
+                    PatOrExpr::Expr(Box::new(crate::member_expr!("jsonMessage", field.name()))),
+                    value_expr
+                )));
+            }
+           
             statements.push(Stmt::Decl(crate::const_decl!(
-                field.name(),
+                format!("{}{}", field.name(), self.get_field_descriptor_str(ctx, &field)),
                 crate::cond_expr!(
-                    crate::call_expr!(
-                        crate::member_expr!("json", "hasOwnProperty"),
-                        vec![crate::expr_or_spread!(field.json_key_name().into())]
-                    ),
-                    json_key_name_field_member(&field),
-                    name_field_member(&field)
+                    Expr::Ident(quote_ident!(format!("{}[\"{}\"] !== undefined", "json", field.json_key_name()))),
+                    Expr::Ident(quote_ident!(format!("{}[\"{}\"]", "json", field.json_key_name()))),
+                    Expr::Ident(quote_ident!(format!("{}[\"{}\"]", "json", field.name())))
                 )
             )));
+           
             statements.push(crate::if_stmt!(
                 field.default_value_bin_expr_for_json(ctx, super::field::bare_field_member),
                 crate::block_stmt!(stmts)
             ))
         }
 
-        statements.push(crate::return_stmt!(quote_ident!("message").into()));
-
+        // statements.push(crate::return_stmt!(quote_ident!("jsonMessage").into()));
+        
         ClassMember::Method(ClassMethod {
+            span: DUMMY_SP,
+            accessibility: None,
+            key: PropName::Ident(quote_ident!(format!("{}_{}", "fromJson", index))),
+            is_abstract: false,
+            is_optional: false,
+            is_override: false,
+            is_static: true,
+            function: Box::new(Function {
+                body: Some(BlockStmt {
+                    span: DUMMY_SP,
+                    stmts: statements,
+                }),
+                decorators: vec![],
+                is_async: false,
+                is_generator: false,
+                params: vec![
+                    Param {
+                        span: DUMMY_SP,
+                        decorators: vec![],
+                        pat: swc_ecma_ast::Pat::Ident(swc_ecma_ast::BindingIdent {
+                           id: quote_ident!("json"),
+                            type_ann: Some(Box::new(crate::type_annotation!("object"))),
+                        }),
+                    },
+                    Param {
+                        span: DUMMY_SP,
+                        decorators: vec![],
+                        pat: swc_ecma_ast::Pat::Ident(swc_ecma_ast::BindingIdent {
+                           id: quote_ident!("jsonMessage"),
+                            type_ann: Some(Box::new(crate::type_annotation!(crate::type_ref!(crate::entity_name_ident!(
+                                quote_ident!(ctx.normalize_name(self.name()))
+                            ))))),
+                        }),
+                    },
+                ],
+                return_type: None,
+                span: DUMMY_SP,
+                type_params: None,
+            }),
+            kind: MethodKind::Method,
+        })
+    }
+
+
+    pub(super) fn print_from_json(&self, ctx: &mut Context) -> Vec<ClassMember> {
+        let mut statements = vec![
+            Stmt::Decl(crate::const_decl!(
+                "jsonMessage",
+                crate::new_expr!(Expr::Ident(quote_ident!(ctx.normalize_name(self.name()))))
+            )),
+
+        ];
+
+        let mut has_oneof = false;
+        for field in self.field.clone() {
+            if field.has_oneof_index() {
+                has_oneof = true;
+                break;
+            }
+        }
+        if has_oneof {
+            statements.push(Stmt::Decl(crate::const_decl!(
+                "oneof",
+                crate::new_expr!(Expr::Ident(quote_ident!("Set")))
+            )));
+        }
+        let mut class_member_vec: Vec<ClassMember> = [].to_vec();
+        let mut cur_field_vec = Vec::new();
+        let mut cur_method_index = 0;
+        let mut newst = |fields: &Vec<&FieldDescriptorProto>, index: i32| {
+            // add class member
+            class_member_vec.push(self.print_from_json_inner(ctx, index, fields));
+            // call inner method
+            statements.push(
+                crate::expr_stmt!(Expr::Ident(quote_ident!(format!("{}.fromJson_{}(json, jsonMessage)", ctx.normalize_name(self.name()), index)))));
+        };
+        for field in &self.field {
+            cur_field_vec.push(field);
+            if cur_field_vec.len() >= 30 {
+                newst(&cur_field_vec, cur_method_index);
+                cur_method_index +=1;
+                cur_field_vec.clear();
+            }
+        }
+        if !cur_field_vec.is_empty() {
+            newst(&cur_field_vec, cur_method_index);
+        }
+
+        statements.push(crate::return_stmt!(quote_ident!("jsonMessage").into()));
+        
+        let from_json_class_member = ClassMember::Method(ClassMethod {
             span: DUMMY_SP,
             accessibility: None,
             key: PropName::Ident(quote_ident!("fromJson")),
@@ -665,11 +864,15 @@ impl DescriptorProto {
                         type_ann: Some(Box::new(crate::type_annotation!("object"))),
                     }),
                 }],
-                return_type: None,
+                return_type: Some(Box::new(crate::type_annotation!(crate::type_ref!(crate::entity_name_ident!(
+                    quote_ident!(ctx.normalize_name(self.name()))
+                ))))),
                 span: DUMMY_SP,
                 type_params: None,
             }),
             kind: MethodKind::Method,
-        })
+        });
+        class_member_vec.push(from_json_class_member);
+        class_member_vec 
     }
 }

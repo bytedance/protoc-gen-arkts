@@ -1,3 +1,11 @@
+ /**
+  * Copyright 2024 ByteDance and/or its affiliates
+  *
+  * Original Files：protoc-gen-ts (https://github.com/thesayyn/protoc-gen-ts)
+  * Copyright (c) 2024 Sahin Yort
+  * SPDX-License-Identifier: MIT 
+ */
+
 use std::vec;
 
 use crate::context::Context;
@@ -80,7 +88,7 @@ impl DescriptorProto {
                 is_async: false,
                 is_generator: false,
                 params: vec![],
-                return_type: None,
+                return_type: Some(Box::new(crate::type_annotation!("Uint8Array"))),
                 span: DUMMY_SP,
                 type_params: None,
             }),
@@ -180,7 +188,7 @@ where
         let mut members: Vec<ClassMember> = Vec::new();
 
         members.push(self.print_message_type(ctx));
-        members.push(self.print_unknown_fields());
+        // members.push(self.print_unknown_fields());
 
         for member in self.field.clone() {
             members.push(member.print_prop(ctx, runtime));
@@ -195,16 +203,24 @@ where
         members.push(self.print_deserialize(ctx));
         members.push(self.print_serialize(ctx, runtime));
 
-        members.push(
-            runtime
-                .to_json(ctx, self)
-                .unwrap_or_else(|| self.print_to_json(ctx)),
-        );
-        members.push(
-            runtime
-                .from_json(ctx, self)
-                .unwrap_or_else(|| self.print_from_json(ctx)),
-        );
+        let to_json_class_member = self.print_to_json(ctx);
+        for class_member in to_json_class_member {
+            members.push(
+                runtime
+                    .to_json(ctx, self)
+                    .unwrap_or_else(|| class_member),
+            );
+        }
+        
+        let from_json_class_members = self.print_from_json(ctx);
+        for class_member in from_json_class_members {
+            members.push(
+                runtime
+                    .from_json(ctx, self)
+                    .unwrap_or_else(|| class_member),
+            );
+        }
+    
 
         let class_decl = ClassDecl {
             ident: quote_ident!(ctx.normalize_name(self.name())),

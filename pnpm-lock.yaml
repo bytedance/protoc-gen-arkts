@@ -8,13 +8,13 @@ importers:
 
   examples/grpc-web:
     dependencies:
-      protoc-gen-ts:
+      protoc-gen-arkts:
         specifier: workspace:*
         version: link:../../js/plugin
 
   examples/serde:
     dependencies:
-      protoc-gen-ts:
+      protoc-gen-arkts:
         specifier: workspace:*
         version: link:../../js/plugin
 

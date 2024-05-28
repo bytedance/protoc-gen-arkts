@@ -1,3 +1,11 @@
+ /**
+  * Copyright 2024 ByteDance and/or its affiliates
+  *
+  * Original Files：protoc-gen-ts (https://github.com/thesayyn/protoc-gen-ts)
+  * Copyright (c) 2024 Sahin Yort
+  * SPDX-License-Identifier: MIT 
+ */
+
 use protobuf_codegen::Codegen;
 use std::{env, path::Path};
 use swc_common::{
@@ -177,8 +185,8 @@ pub fn get_member(proto: &str, type_name: &str, member: &str) -> Option<swc_ecma
 pub const STRUCT: &str = include_str!("./js/runtime/google_protobuf/struct.ts");
 pub const ANY: &str = include_str!("./js/runtime/google_protobuf/any.ts");
 pub const WRAPPERS: &str = include_str!("./js/runtime/google_protobuf/wrappers.ts");
-pub const TIMESTAMP: &str = include_str!("./js/runtime/google_protobuf/timestamp.ts");
-pub const DURATION: &str = include_str!("./js/runtime/google_protobuf/duration.ts");
+// pub const TIMESTAMP: &str = include_str!("./js/runtime/google_protobuf/timestamp.ts");
+// pub const DURATION: &str = include_str!("./js/runtime/google_protobuf/duration.ts");
 pub const FIELD_MASK: &str = include_str!("./js/runtime/google_protobuf/field_mask.ts");
 
 fn main() {
@@ -190,12 +198,12 @@ fn main() {
         .include("src/descriptor")
         .run_from_script();
 
-    WktGen::new()
+        WktGen::new()
         .build("struct".to_string(), STRUCT.to_string())
         .build("any".to_string(), ANY.to_string())
         .build("wrappers".to_string(), WRAPPERS.to_string())
-        .build("timestamp".to_string(), TIMESTAMP.to_string())
-        .build("duration".to_string(), DURATION.to_string())
+        // .build("timestamp".to_string(), TIMESTAMP.to_string())
+        // .build("duration".to_string(), DURATION.to_string())
         .build("field_mask".to_string(), FIELD_MASK.to_string())
         .yield_mod();
 }

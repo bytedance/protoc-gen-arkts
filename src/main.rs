@@ -3,7 +3,7 @@ use std::io::*;
 
 pub mod runtime;
 
-use protoc_gen_ts::*;
+use protoc_gen_arkts::*;
 use crate::compile::compile;
 
 fn main() {

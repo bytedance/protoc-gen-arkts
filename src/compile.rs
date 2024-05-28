@@ -1,3 +1,11 @@
+ /**
+  * Copyright 2024 ByteDance and/or its affiliates
+  *
+  * Original Files：protoc-gen-ts (https://github.com/thesayyn/protoc-gen-ts)
+  * Copyright (c) 2024 Sahin Yort
+  * SPDX-License-Identifier: MIT 
+ */
+
 use protobuf::Message;
 use std::str::FromStr;
 use std::string::*;
@@ -33,6 +41,10 @@ pub fn compile(buffer: Vec<u8>) -> Vec<u8> {
                 continue;
             }
 
+            if descriptor.name().contains("descriptor.proto") {
+                continue;
+            }
+
             let ctx = ctx.clone();
             let runtime = runtime.clone();
             let grpc_runtime = grpc_runtime.clone();
@@ -50,7 +62,7 @@ pub fn compile(buffer: Vec<u8>) -> Vec<u8> {
                 let ts = emit(body);
 
                 let mut file = File::new();
-                file.set_name(descriptor.name().replace(".proto", ".ts"));
+                file.set_name(descriptor.name().replace(".proto", ".ets"));
                 file.set_content(ts);
                 outputs.lock().unwrap().push(file)
             };

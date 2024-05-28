@@ -1,8 +1,0 @@
-syntax = "proto3";
-
-message MessageWithOneOf {
-    oneof name_or_id {
-        string name = 1;
-        string id = 2;
-    }   
-}

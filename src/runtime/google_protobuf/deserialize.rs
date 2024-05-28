@@ -1,3 +1,11 @@
+ /**
+  * Copyright 2024 ByteDance and/or its affiliates
+  *
+  * Original Files：protoc-gen-ts (https://github.com/thesayyn/protoc-gen-ts)
+  * Copyright (c) 2024 Sahin Yort
+  * SPDX-License-Identifier: MIT 
+ */
+
 use super::GooglePBRuntime;
 use crate::common::field;
 use crate::descriptor::field_descriptor_proto;
@@ -21,12 +29,15 @@ impl GooglePBRuntime {
         let mut stmts = vec![];
 
         if create_br {
-            let import = ctx.get_import(&ctx.options.runtime_package);
+            let import: swc_ecma_ast::Ident = ctx.get_import(&ctx.options.runtime_package);
             let br_decl_init = crate::new_expr!(
-                crate::member_expr!(import, "BinaryReader"),
+                crate::member_expr!(import.clone(), "BinaryReader"),
                 vec![crate::expr_or_spread!(quote_ident!("bytes").into())]
             );
-            let br_decl = Stmt::Decl(crate::const_decl!("br", br_decl_init));
+
+            let br_decl = Stmt::Decl(
+                crate::const_decl!(format!("{}: {}.BinaryReader", "br", import.clone().as_ref()),
+                br_decl_init));
             stmts.push(br_decl)
         }
 
@@ -78,10 +89,14 @@ impl GooglePBRuntime {
             self.rw_function_name("read", ctx, field)
         ));
         if (field.is_packed(ctx) || field.is_packable()) && !force_unpacked {
-            call = crate::call_expr!(crate::member_expr!(
-                "br.decoder_",
-                self.decoder_fn_name(field)
-            ));
+            let mut covert_type = "";
+            if self.decoder_fn_name(field) == "readSignedVarint32" || self.decoder_fn_name(field) == "readDouble" {
+                covert_type = "as number";
+            }
+            call = crate::new_expr!(
+                Expr::Ident(
+                    quote_ident!(format!("br.decoder_.{}() {}",
+                    self.decoder_fn_name(field), covert_type))))
         }
         if field.is_bigint() {
             call = crate::call_expr!(
@@ -95,8 +110,8 @@ impl GooglePBRuntime {
         }
         if (field.is_packed(ctx) || field.is_packable()) && !force_unpacked {
             call = crate::call_expr!(
-                crate::member_expr!("br", "readPackedField_"),
-                vec![crate::expr_or_spread!(crate::arrow_func_short!(call))]
+                crate::member_expr!("br", self.rw_function_name("read", ctx, field)),
+                vec![]
             )
         }
         call
@@ -133,7 +148,7 @@ impl GooglePBRuntime {
                         )),
                         self.deserialize_stmt(ctx, &descriptor, field::bare_field_member, false),
                         crate::expr_stmt!(crate::call_expr!(
-                            crate::member_expr_bare!(accessor(field), "set"),
+                            crate::member_expr_bare!(crate::member_expr!("this", format!("{}?", field.name())), "set"),
                             vec![
                                 crate::expr_or_spread!(Expr::TsNonNull(TsNonNullExpr {
                                     expr: Box::new(Expr::Ident(quote_ident!("key"))),
@@ -189,7 +204,7 @@ impl GooglePBRuntime {
                         self.deserialize_field_expr(ctx, field, accessor, false)
                     )),
                     crate::expr_stmt!(crate::call_expr!(
-                        crate::member_expr_bare!(accessor(field), "push"),
+                        crate::member_expr_bare!(crate::member_expr!("this", format!("{}?", field.name())), "push"),
                         vec![crate::expr_or_spread!(
                             self.deserialize_field_expr(ctx, field, accessor, true)
                         )]
@@ -197,7 +212,7 @@ impl GooglePBRuntime {
                 )
             } else if field.is_repeated() && !field.is_packed(ctx) {
                 crate::expr_stmt!(crate::call_expr!(
-                    crate::member_expr_bare!(accessor(field), "push"),
+                    crate::member_expr_bare!(crate::member_expr!("this", format!("{}?", field.name())), "push"),
                     vec![crate::expr_or_spread!(read_expr)]
                 ))
             } else {
@@ -249,58 +264,10 @@ impl GooglePBRuntime {
         cases.push(SwitchCase {
             span: DUMMY_SP,
             test: None,
-            cons: if add_unknown_fields {
-                vec![
-                    Stmt::Decl(crate::const_decl!(
-                        "prev",
-                        crate::call_expr!(crate::member_expr!("br", "getCursor"))
-                    )),
-                    crate::expr_stmt!(crate::call_expr!(crate::member_expr!("br", "skipField"))),
-                    crate::expr_stmt!(crate::call_expr!(
-                        crate::member_expr_bare!(
-                            crate::member_expr!("this", "#unknown_fields"),
-                            "push"
-                        ),
-                        vec![crate::expr_or_spread!(Expr::Object(ObjectLit {
-                            span: DUMMY_SP,
-                            props: vec![
-                                PropOrSpread::Prop(Box::new(Prop::KeyValue(KeyValueProp {
-                                    key: PropName::Ident(quote_ident!("no")),
-                                    value: Box::new(crate::call_expr!(crate::member_expr!(
-                                        "br",
-                                        "getFieldNumber"
-                                    )))
-                                }))),
-                                PropOrSpread::Prop(Box::new(Prop::KeyValue(KeyValueProp {
-                                    key: PropName::Ident(quote_ident!("wireType")),
-                                    value: Box::new(crate::call_expr!(crate::member_expr!(
-                                        "br",
-                                        "getWireType"
-                                    )))
-                                }))),
-                                PropOrSpread::Prop(Box::new(Prop::KeyValue(KeyValueProp {
-                                    key: PropName::Ident(quote_ident!("data")),
-                                    value: Box::new(crate::call_expr!(
-                                        crate::member_expr!("bytes", "subarray"),
-                                        vec![
-                                            crate::expr_or_spread!(quote_ident!("prev").into()),
-                                            crate::expr_or_spread!(crate::call_expr!(
-                                                crate::member_expr!("br", "getCursor")
-                                            ))
-                                        ]
-                                    ))
-                                })))
-                            ]
-                        }))]
-                    )),
-                ]
-            } else {
-                // just skip the field.
-                vec![crate::expr_stmt!(crate::call_expr!(crate::member_expr!(
-                    "br",
-                    "skipField"
-                )))]
-            },
+            cons: vec![crate::expr_stmt!(crate::call_expr!(crate::member_expr!(
+                "br",
+                "skipField"
+            )))]
         });
 
         let switch_stmt = Stmt::Switch(SwitchStmt {
