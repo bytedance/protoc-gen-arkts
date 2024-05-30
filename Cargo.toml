@@ -2,7 +2,7 @@
 name = "protoc_gen_arkts"
 version = "0.0.1"
 authors = ["xingxing <wanglijie.skin@bytedance.com>"]
-edition = "2024"
+edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
