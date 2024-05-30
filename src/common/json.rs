@@ -345,7 +345,8 @@ impl FieldDescriptorProto {
             //     vec![crate::expr_or_spread!(accessor)]
             // )
         } else if self.is_bigint() {
-            crate::call_expr!(crate::member_expr_bare!(accessor, "toString"))
+            // crate::call_expr!(crate::member_expr_bare!(accessor, "toString"))
+            accessor
         } else if self.is_number() {
             crate::cond_expr!(
                 crate::call_expr!(
