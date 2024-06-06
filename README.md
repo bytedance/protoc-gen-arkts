@@ -16,6 +16,7 @@ Compile `.proto` files to plain arkTs.
 
 - Supports json encoding (`toJson`, `fromJson`)
 - Supports binary encoding (`toBinary`, `fromBinary`)
+- Supports Sendable
 
 ## Usage
 

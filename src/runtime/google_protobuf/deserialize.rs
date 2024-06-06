@@ -29,14 +29,14 @@ impl GooglePBRuntime {
         let mut stmts = vec![];
 
         if create_br {
-            let import: swc_ecma_ast::Ident = ctx.get_import(&ctx.options.runtime_package);
+            ctx.get_protobuf_import(&ctx.options.runtime_package);
             let br_decl_init = crate::new_expr!(
-                crate::member_expr!(import.clone(), "BinaryReader"),
+                Expr::Ident(quote_ident!("BinaryReader")),
                 vec![crate::expr_or_spread!(quote_ident!("bytes").into())]
             );
 
             let br_decl = Stmt::Decl(
-                crate::const_decl!(format!("{}: {}.BinaryReader", "br", import.clone().as_ref()),
+                crate::const_decl!(format!("{}: BinaryReader", "br"),
                 br_decl_init));
             stmts.push(br_decl)
         }
@@ -191,17 +191,32 @@ impl GooglePBRuntime {
     ) -> Stmt {
         let mut cases: Vec<SwitchCase> = vec![];
         for field in &descriptor.field {
-            let read_expr = self.deserialize_field_expr(ctx, field, accessor, false);
+            let mut read_expr = self.deserialize_field_expr(ctx, field, accessor, false);
+            if field.is_bytes() && ctx.options.with_sendable {
+                read_expr = crate::call_expr!(
+                        crate::member_expr_bare!(crate::member_expr!("collections", "Uint8Array"), "from"), 
+                        vec![
+                            crate::expr_or_spread!(read_expr)]
+                    )
+            }
             let read_stmt = if field.is_map(ctx) {
                 crate::expr_stmt!(read_expr)
             } else if field.is_message() && !field.is_repeated() {
                 crate::expr_stmt!(read_expr)
             } else if field.is_packable() {
+                let mut field_expr = self.deserialize_field_expr(ctx, field, accessor, false);
+                if field.is_repeated() && ctx.options.with_sendable  {
+                    field_expr = crate::call_expr!(crate::member_expr_bare!(crate::member_expr!("collections", "Array"), "from"), 
+                        vec![
+                            crate::expr_or_spread!(field_expr)
+                        ]
+                    )
+                }
                 crate::if_stmt!(
                     crate::call_expr!(crate::member_expr!("br", "isDelimited")),
                     crate::expr_stmt!(crate::assign_expr!(
                         PatOrExpr::Expr(Box::new(accessor(field))),
-                        self.deserialize_field_expr(ctx, field, accessor, false)
+                        field_expr
                     )),
                     crate::expr_stmt!(crate::call_expr!(
                         crate::member_expr_bare!(crate::member_expr!("this", format!("{}?", field.name())), "push"),

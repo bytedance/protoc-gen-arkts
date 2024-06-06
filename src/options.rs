@@ -15,10 +15,12 @@ pub struct Options {
     pub grpc_server_package: String,
     pub grpc_web_package: String,
     pub runtime_package: String,
-    pub base64_package: String,
+    pub base64_package: String,    
+    pub sendable_packege: String,
     pub namespaces: bool,
     pub import_suffix: String,
-    pub with_namespace: bool
+    pub with_namespace: bool,
+    pub with_sendable: bool
 }
 
 impl Options {
@@ -27,10 +29,12 @@ impl Options {
         let mut grpc_web_package = "grpc-web";
         let mut runtime_package = "google-protobuf";
         let mut base64_package = "js-base64";
+        let mut sendable_package = "@kit.ArkTS";
         let mut unary_rpc_promise = false;
         let mut namespaces = false;
         let mut import_suffix = "";
         let mut with_namespace = true;
+        let mut with_sendable = false;
 
         let parts = raw.split(",");
 
@@ -53,6 +57,9 @@ impl Options {
                 "base64_package" => {
                     base64_package = kv.next().expect("expected a value for base64_package")
                 },
+                "sendable_package" => {
+                    // 
+                },
                 "unary_rpc_promise" => {
                     unary_rpc_promise = kv.next().expect("expected a value for unary_rpc_promise") == "true"
                 }  
@@ -70,6 +77,9 @@ impl Options {
                 "with_namespace" => {
                     with_namespace = kv.next().expect("expected a value for extend namespace ") == "true";
                 },
+                "with_sendable" => {
+                    with_sendable = kv.next().expect("expected a value for extend namespace ") == "true";
+                },
                 // just silently ignore
                 option => {
                     eprintln!("WARNING: unknown option {}", option)
@@ -83,9 +93,11 @@ impl Options {
             runtime_package: runtime_package.to_string(),
             import_suffix: import_suffix.to_string(),
             base64_package: base64_package.to_string(),
+            sendable_packege: sendable_package.to_string(),
             namespaces,
             unary_rpc_promise,
-            with_namespace
+            with_namespace,
+            with_sendable
         }
     }
 }

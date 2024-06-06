@@ -54,11 +54,22 @@ impl GooglePBRuntime {
         if let Some(an) = access_normalizer {
             access_expr = an(&access_expr)
         }
+
+        let mut field_params = crate::expr_or_spread!(access_expr);
+        if ctx.options.with_sendable && field.is_bytes() {
+            field_params = crate::expr_or_spread!(
+                crate::call_expr!(crate::member_expr!("Uint8Array", "from"), 
+                    vec![
+                        field_params
+                    ]
+                )
+            )
+        }
         crate::expr_stmt!(crate::call_expr!(
             crate::member_expr!("bw", self.rw_function_name("write", ctx, field)),
             vec![
                 crate::expr_or_spread!(crate::lit_num!(field.number()).into()),
-                crate::expr_or_spread!(access_expr),
+                field_params,
             ]
         ))
     }
@@ -143,11 +154,11 @@ impl GooglePBRuntime {
         let mut stmts = vec![];
 
         if create_bw {
-            let import = ctx.get_import(&ctx.options.runtime_package);
-            let bw_decl_init = crate::new_expr!(crate::member_expr!(import.clone(), "BinaryWriter"));
+            ctx.get_protobuf_import(&ctx.options.runtime_package);
+            let bw_decl_init = crate::new_expr!(Expr::Ident(quote_ident!("BinaryWriter")));
             let bw_decl = Stmt::Decl(
                 crate::const_decl!(
-                    format!("{}: {}.BinaryWriter", "bw", import.clone().as_ref()), bw_decl_init));
+                    format!("{}: BinaryWriter", "bw"), bw_decl_init));
             stmts.push(bw_decl)
         }
 
@@ -187,16 +198,29 @@ impl GooglePBRuntime {
             if field.is_map(ctx) {
                 field_stmt = self.serialize_map_field_stmt(ctx, field)
             } else if field.is_repeated() && !field.is_packed(ctx) {
-                field_stmt = Stmt::ForOf(ForOfStmt {
-                    is_await: false,
-                    left: ForHead::VarDecl(Box::new(crate::const_decl_uinit!(field.name()))),
-                    right: Box::new(accessor(field)),
-                    body: Box::new(Stmt::Block(BlockStmt {
+                if ctx.options.with_sendable {
+                    field_stmt = crate::expr_stmt!(crate::call_expr!(
+                        crate::member_expr_bare!(super::field::this_field_member(field), "forEach"),
+                        vec![crate::expr_or_spread!(crate::arrow_func!(
+                            vec![crate::pat_ident!(quote_ident!(field.name()))],
+                            vec![
+                                field_stmt
+                            ]
+                        ))]
+                    ))
+
+                } else {
+                    field_stmt = Stmt::ForOf(ForOfStmt {
+                        is_await: false,
+                        left: ForHead::VarDecl(Box::new(crate::const_decl_uinit!(field.name()))),
+                        right: Box::new(accessor(field)),
+                        body: Box::new(Stmt::Block(BlockStmt {
+                            span: DUMMY_SP,
+                            stmts: vec![field_stmt],
+                        })),
                         span: DUMMY_SP,
-                        stmts: vec![field_stmt],
-                    })),
-                    span: DUMMY_SP,
-                })
+                    })
+                }
             }
 
             if prevent_defaults {

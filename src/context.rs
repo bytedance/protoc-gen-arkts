@@ -11,7 +11,7 @@ use std::{
 };
 use swc_common::DUMMY_SP;
 use swc_ecma_ast::{
-    Ident, ImportDecl, ImportSpecifier, ImportStarAsSpecifier, ModuleDecl, ModuleItem, Str,
+    Ident, ImportDecl, ImportSpecifier, ImportStarAsSpecifier, ImportNamedSpecifier, ModuleDecl, ModuleItem, Str,
 };
 use swc_ecma_utils::quote_ident;
 
@@ -143,6 +143,87 @@ impl<'a> Context<'a> {
         }
         imports.clear();
         imps
+    }
+
+    pub fn get_sendable_import(&self, source: &str) {
+        let name: Ident = quote_ident!("collections");
+
+        if !self.import_identifier_map.contains_key(&String::from(source)) {
+            let decl = ImportDecl {
+                span: DUMMY_SP,
+                specifiers: vec![ImportSpecifier::Named(ImportNamedSpecifier {
+                    span: DUMMY_SP,
+                    local: name,
+                    imported: None,
+                    is_type_only:false
+
+                })],
+                src: Box::new(Str {
+                    span: DUMMY_SP,
+                    raw: None,
+                    value: source.into(),
+                }),
+                type_only: false,
+                asserts: None,
+            };
+            self.imports.lock().unwrap().push(decl);
+            self.import_identifier_map.insert(String::from(source), u64::MAX);
+        }
+
+    }
+
+    pub fn get_protobuf_import(&self, source: &str) {
+        let name: Ident = quote_ident!("BinaryReader, BinaryWriter");
+
+        if !self.import_identifier_map.contains_key(&String::from(source)) {
+            let decl = ImportDecl {
+                span: DUMMY_SP,
+                specifiers: vec![ImportSpecifier::Named(ImportNamedSpecifier {
+                    span: DUMMY_SP,
+                    local: name,
+                    imported: None,
+                    is_type_only:false
+
+                })],
+                src: Box::new(Str {
+                    span: DUMMY_SP,
+                    raw: None,
+                    value: source.into(),
+                }),
+                type_only: false,
+                asserts: None,
+            };
+            self.imports.lock().unwrap().push(decl);
+            self.import_identifier_map.insert(String::from(source), u64::MAX);
+        }
+
+    }
+
+    pub fn get_base64_import(&self, source: &str) {
+        let name: Ident = quote_ident!("toUint8Array, fromUint8Array");
+
+        if !self.import_identifier_map.contains_key(&String::from(source)) {
+            let decl = ImportDecl {
+                span: DUMMY_SP,
+                specifiers: vec![ImportSpecifier::Named(ImportNamedSpecifier {
+                    span: DUMMY_SP,
+                    local: name,
+                    imported: None,
+                    is_type_only:false
+
+                })],
+                src: Box::new(Str {
+                    span: DUMMY_SP,
+                    raw: None,
+                    value: source.into(),
+                }),
+                type_only: false,
+                asserts: None,
+            };
+            self.imports.lock().unwrap().push(decl);
+            self.import_identifier_map.insert(String::from(source), u64::MAX);
+        }
+
     }
 
     pub fn get_import(&self, source: &str) -> Ident {

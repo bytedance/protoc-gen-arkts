@@ -21,7 +21,7 @@ where
         let r#enum = Decl::TsEnum(Box::new(TsEnumDecl {
             span: DUMMY_SP,
             declare: false,
-            is_const: false,
+            is_const: ctx.options.with_sendable,
             id: quote_ident!(ctx.normalize_name(self.name())),
             members,
         }));

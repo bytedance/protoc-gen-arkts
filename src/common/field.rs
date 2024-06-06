@@ -145,19 +145,37 @@ impl FieldDescriptorProto {
         if self.has_oneof_index() {
             return Expr::Ident(quote_ident!("undefined"));
         }
+
+        if ctx.options.with_sendable {
+            ctx.get_sendable_import(&ctx.options.sendable_packege)
+        }
         if self.is_map(ctx) {
-            crate::new_expr!(Expr::Ident(quote_ident!("Map")))
+            if ctx.options.with_sendable {
+                crate::new_expr!(crate::member_expr_bare!(Expr::Ident(quote_ident!("collections")), "Map"))
+            } else {
+                crate::new_expr!(Expr::Ident(quote_ident!("Map")))
+            }
         } else if self.is_repeated() {
-            Expr::Array(ArrayLit {
-                elems: vec![],
-                span: DUMMY_SP,
-            })
+            if ctx.options.with_sendable {
+                crate::new_expr!(crate::member_expr_bare!(Expr::Ident(quote_ident!("collections")), "Array"))
+            } else {
+                Expr::Array(ArrayLit {
+                    elems: vec![],
+                    span: DUMMY_SP,
+                })
+            }
+           
         } else if self.is_enum() {
             crate::lit_num!(ctx.get_leading_enum_member(self.type_name())).into()
         } else if self.is_message() && include_message {
             crate::new_expr!(ctx.lazy_type_ref(self.type_name()).into())
         } else if self.is_bytes() {
-            crate::new_expr!(quote_ident!("Uint8Array").into())
+            if ctx.options.with_sendable {
+                crate::new_expr!(crate::member_expr_bare!(Expr::Ident(quote_ident!("collections")), "Uint8Array"))
+            } else {
+                crate::new_expr!(quote_ident!("Uint8Array").into())
+            }
+            
         } else if self.is_string() {
             quote_str!(self.default_value()).into()
         } else if self.is_bigint() {
@@ -199,13 +217,25 @@ impl FieldDescriptorProto {
             }))
         }
 
+        if self.is_bytes() && ctx.options.with_sendable {
+            ts_type = Some(TsType::TsTypeRef(TsTypeRef {
+                span: DUMMY_SP,
+                type_name: TsEntityName::Ident(quote_ident!(format!("{}.Uint8Array", "collections"))),
+                type_params: None,
+            }));
+        }
+
         if self.is_repeated() && self.is_map(ctx) {
             let descriptor = ctx
                 .get_map_type(self.type_name())
                 .expect(format!("can not find the map type {}", self.type_name()).as_str());
+            let mut type_name_ident = quote_ident!("Map");
+            if ctx.options.with_sendable {
+                type_name_ident = quote_ident!(format!("{}.Map", "collections"))
+            }
             ts_type = Some(TsType::TsTypeRef(TsTypeRef {
                 span: DUMMY_SP,
-                type_name: TsEntityName::Ident(quote_ident!("Map")),
+                type_name: TsEntityName::Ident(type_name_ident),
                 type_params: Some(Box::new(TsTypeParamInstantiation {
                     span: DUMMY_SP,
                     params: descriptor
@@ -220,11 +250,27 @@ impl FieldDescriptorProto {
                 })),
             }))
         } else if ts_type.is_some() && self.is_repeated() && !self.is_map(ctx) {
-            ts_type = Some(TsType::TsArrayType(TsArrayType {
-                elem_type: Box::new(ts_type.unwrap()),
-                span: DUMMY_SP,
-            }))
+           
+            if ctx.options.with_sendable {
+                ts_type = Some(TsType::TsTypeRef(TsTypeRef {
+                    span: DUMMY_SP,
+                    type_name: TsEntityName::Ident(quote_ident!(format!("{}.Array", "collections"))),
+                    type_params: Some(Box::new(TsTypeParamInstantiation {
+                        span: DUMMY_SP,
+                        params: vec![
+                            Box::new(ts_type.unwrap())
+                        ]
+                    })),
+                }))
+            } else {
+                ts_type = Some(TsType::TsArrayType(TsArrayType {
+                    elem_type: Box::new(ts_type.unwrap()),
+                    span: DUMMY_SP,
+                }))
+            }
+           
         }
+
         ts_type
     }
     pub fn type_annotation(&self, ctx: &mut Context) -> Option<Box<TsTypeAnn>> {

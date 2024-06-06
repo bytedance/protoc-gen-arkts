@@ -15,7 +15,7 @@ use crate::runtime::Runtime;
 
 use swc_common::DUMMY_SP;
 use swc_ecma_ast::{
-    ArrayLit, BlockStmt, Class, ClassDecl, ClassMember, ClassMethod, Decl, ExportDecl, Expr,
+    ArrayLit, BlockStmt, Class, ClassDecl, ClassMember, ClassMethod, Decl, ExportDecl, Expr, Decorator,
     Function, MethodKind, ModuleDecl, ModuleItem, Param, PrivateName, PrivateProp, PropName, Stmt, ClassProp,
 };
 use swc_ecma_utils::{quote_ident, quote_str};
@@ -47,7 +47,7 @@ impl DescriptorProto {
         let type_name = ctx.calculate_type_name(self.name());
         ClassMember::ClassProp(ClassProp {
             span: DUMMY_SP,
-            key: PropName::Ident(quote_ident!("type")),
+            key: PropName::Ident(quote_ident!("type: string")),
             value: Some(Box::new(crate::lit_str!(type_name.trim_start_matches(".")).into())),
             type_ann: None,
             declare: false,
@@ -221,6 +221,14 @@ where
             );
         }
     
+        let mut decorators = Vec::new();
+        if ctx.options.with_sendable {
+            let sendable_decorator = Decorator {
+                span: DUMMY_SP,
+                expr: Box::new(Expr::Ident(quote_ident!("Sendable")))
+            };
+            decorators.push(sendable_decorator)
+        }
 
         let class_decl = ClassDecl {
             ident: quote_ident!(ctx.normalize_name(self.name())),
@@ -228,7 +236,7 @@ where
             class: Box::new(Class {
                 span: DUMMY_SP,
                 body: members,
-                decorators: vec![],
+                decorators: decorators,
                 implements: vec![],
                 is_abstract: false,
                 type_params: None,

@@ -335,15 +335,16 @@ impl FieldDescriptorProto {
             //     BinaryOp::NullishCoalescing
             // )
         } else if self.is_bytes() {
-            let base64 = ctx.get_import(ctx.options.base64_package.as_str());
+            ctx.get_base64_import(ctx.options.base64_package.as_str());
+            let mut params = vec![crate::expr_or_spread!(accessor)];
+            if ctx.options.with_sendable {
+                params = vec![crate::expr_or_spread!(crate::call_expr!(crate::member_expr!("Uint8Array", "from"), params))]
+            } 
+
             crate::call_expr!(
-                crate::member_expr!(base64, "fromUint8Array"),
-                vec![crate::expr_or_spread!(accessor)]
+                Expr::Ident(quote_ident!("fromUint8Array")),
+                params
             )
-            // crate::call_expr!(
-            //     crate::member_expr!(base64, "encode"),
-            //     vec![crate::expr_or_spread!(accessor)]
-            // )
         } else if self.is_bigint() {
             // crate::call_expr!(crate::member_expr_bare!(accessor, "toString"))
             accessor
@@ -389,15 +390,17 @@ impl FieldDescriptorProto {
                 crate::member_expr_computed!(ctx.lazy_type_ref(self.type_name()).into(), accessor)
             )
         } else if self.is_bytes() {
-            let base64 = ctx.get_import(ctx.options.base64_package.as_str());
+            let mut method = Expr::Ident(quote_ident!("toUint8Array"));
+            let mut param =  vec![crate::expr_or_spread!(accessor)];
+            if ctx.options.with_sendable {
+                method = crate::member_expr!("collections.Uint8Array", "from");
+                param = vec![crate::expr_or_spread!(crate::call_expr!(Expr::Ident(quote_ident!("toUint8Array")), param))];
+            }
+
             crate::call_expr!(
-                crate::member_expr!(base64, "toUint8Array"),
-                vec![crate::expr_or_spread!(accessor)]
+                method,
+                param
             )
-            // crate::call_expr!(
-            //     crate::member_expr!(base64, "decode"),
-            //     vec![crate::expr_or_spread!(accessor)]
-            // )
         } else if self.is_bigint() {
             crate::call_expr!(
                 quote_ident!("BigInt").into(),
@@ -517,8 +520,16 @@ impl DescriptorProto {
                     ))]
                 )))
             } else if field.is_repeated() {
+                let mut field_member_expr = crate::member_expr!("this", field.name());
+                if ctx.options.with_sendable {
+                    field_member_expr = crate::call_expr!(
+                        crate::member_expr!("Array", "from"),
+                        vec![crate::expr_or_spread!(field_member_expr)]
+                    )
+                }
+
                 value_expr = crate::call_expr!(
-                    crate::member_expr_bare!(crate::member_expr!("this", field.name()), "map"),
+                    crate::member_expr_bare!(field_member_expr, "map"),
                     vec![crate::expr_or_spread!(crate::arrow_func_short!(
                         value_expr,
                         vec![crate::pat_ident!(quote_ident!("r"))]
@@ -692,6 +703,12 @@ impl DescriptorProto {
                         ]
                     ))]
                 );
+                if ctx.options.with_sendable {
+                    value_expr = crate::call_expr!(
+                        crate::member_expr_bare!(Expr::Ident(quote_ident!("collections.Array")), "from"),
+                        vec![crate::expr_or_spread!(value_expr)]
+                    )
+                }
             }
 
             let mut stmts = vec![];
