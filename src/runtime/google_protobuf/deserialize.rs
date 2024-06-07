@@ -109,10 +109,21 @@ impl GooglePBRuntime {
             call = crate::bin_expr!(call, crate::lit_num!(0).into(), BinaryOp::NotEqEq)
         }
         if (field.is_packed(ctx) || field.is_packable()) && !force_unpacked {
-            call = crate::call_expr!(
+            let mut call_expr = crate::call_expr!(
                 crate::member_expr!("br", self.rw_function_name("read", ctx, field)),
                 vec![]
-            )
+            );
+
+            if field.type_() == field_descriptor_proto::Type::TYPE_BOOL {
+                call_expr = crate::call_expr!(
+                    crate::member_expr_bare!(call_expr.into(), "map"),
+                    vec![crate::expr_or_spread!(crate::arrow_func_short!(
+                        crate::bin_expr!(Expr::Ident(quote_ident!("r")), crate::lit_num!(0).into(), BinaryOp::NotEqEq),
+                        vec![crate::pat_ident!(quote_ident!(format!("{}: {}", "r", "number")))]
+                    ))]
+                )
+            } 
+            call = call_expr
         }
         call
     }

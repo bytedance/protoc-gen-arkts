@@ -291,9 +291,14 @@ impl FieldDescriptorProto {
         if ctx.syntax == &Syntax::Proto3 || self.is_repeated() || self.is_map(&ctx) {
             value = Some(Box::new(self.default_value_expr(ctx, false)))
         }
+        let mut key_ident = quote_ident!(self.prop_name());
+        if self.is_optional() {
+            key_ident = crate::quote_ident_optional!(self.prop_name())
+        }
+
         ClassMember::ClassProp(ClassProp {
             span: DUMMY_SP,
-            key: PropName::Ident(crate::quote_ident_optional!(self.prop_name())),
+            key: PropName::Ident(key_ident),
             value,
             type_ann: self.type_annotation(ctx),
             declare: false,
