@@ -288,7 +288,7 @@ impl FieldDescriptorProto {
 
     pub fn print_prop<T: Runtime>(&self, ctx: &mut Context, _runtime: &T) -> ClassMember {
         let mut value: Option<Box<Expr>> = None;
-        if ctx.syntax == &Syntax::Proto3 || self.is_repeated() || self.is_map(&ctx) {
+        if ctx.syntax == &Syntax::Proto3 || self.is_repeated() || self.is_map(&ctx) || !self.is_optional() {
             value = Some(Box::new(self.default_value_expr(ctx, false)))
         }
         let mut key_ident = quote_ident!(self.prop_name());
