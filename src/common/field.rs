@@ -200,7 +200,11 @@ impl FieldDescriptorProto {
                 .expect("can not parse the default"))
             .into()
         } else {
-            quote_ident!("undefined").into()
+            if self.is_optional() || self.proto3_optional() {
+                quote_ident!("undefined").into()
+            } else {
+                crate::new_expr!(ctx.lazy_type_ref(self.type_name()).into())
+            }
         }
     }
     fn ts_type(&self, ctx: &mut Context) -> Option<TsType> {
