@@ -1,0 +1,11 @@
+syntax = "proto3";
+package enum_package;
+
+enum Enum {
+    ENUM_0 = 0;
+    ENUM_1 = 1;
+}
+
+enum Enum_V2 {
+    ENUM_V2_0 = 0;
+}

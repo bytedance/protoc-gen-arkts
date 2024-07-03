@@ -67,7 +67,7 @@ pub struct Context<'a> {
     name: String,
     counter: Arc<AtomicU64>,
     imports: Arc<Mutex<Vec<ImportDecl>>>,
-    import_identifier_map: Arc<DashMap<String, u64>>,
+    import_identifier_map: Arc<DashMap<String, Vec<String>>>,
     type_reg: Arc<DashMap<String, String>>,
     map_type_reg: Arc<DashMap<String, descriptor::DescriptorProto>>,
     leading_enum_member_reg: Arc<DashMap<String, i32>>,
@@ -136,6 +136,41 @@ impl<'a> Context<'a> {
     }
 
     pub fn drain_imports(&mut self) -> Vec<ModuleItem> {
+
+        for struct_pair in self.import_identifier_map.iter() {
+            if struct_pair.value().is_empty() {
+                continue;
+            }
+
+            let mut struct_name_str = String::new();
+            for struct_name in struct_pair.value() {
+                struct_name_str += struct_name;
+                struct_name_str += ", ";
+            }
+            struct_name_str = String::from(&struct_name_str[0..struct_name_str.len() -2]);
+
+            let name = quote_ident!(struct_name_str);
+            let decl = ImportDecl {
+                span: DUMMY_SP,
+                specifiers: vec![ImportSpecifier::Named(ImportNamedSpecifier {
+                    span: DUMMY_SP,
+                    local: name,
+                    imported: None,
+                    is_type_only:false
+
+                })],
+                src: Box::new(Str {
+                    span: DUMMY_SP,
+                    raw: None,
+                    value: struct_pair.key().as_str().into(),
+                }),
+                type_only: false,
+                asserts: None,
+            };
+            self.imports.lock().unwrap().push(decl);
+        }
+        self.import_identifier_map.clear();
+
         let mut imps = vec![];
         let mut imports = self.imports.lock().unwrap();
         for import in imports.to_vec() {
@@ -167,7 +202,7 @@ impl<'a> Context<'a> {
                 asserts: None,
             };
             self.imports.lock().unwrap().push(decl);
-            self.import_identifier_map.insert(String::from(source), u64::MAX);
+            self.import_identifier_map.insert(String::from(source), Vec::new());
         }
 
     }
@@ -194,7 +229,7 @@ impl<'a> Context<'a> {
                 asserts: None,
             };
             self.imports.lock().unwrap().push(decl);
-            self.import_identifier_map.insert(String::from(source), u64::MAX);
+            self.import_identifier_map.insert(String::from(source), Vec::new());
         }
 
     }
@@ -221,39 +256,56 @@ impl<'a> Context<'a> {
                 asserts: None,
             };
             self.imports.lock().unwrap().push(decl);
-            self.import_identifier_map.insert(String::from(source), u64::MAX);
+            self.import_identifier_map.insert(String::from(source), Vec::new());
         }
 
     }
 
-    pub fn get_import(&self, source: &str) -> Ident {
-        let cached_counter = self.import_identifier_map.get(&String::from(source));
-
-        if let Some(counter) = cached_counter {
-            return quote_ident!(format!("imp_{}", *counter));
+    pub fn update_import(&self, type_name: &str, source: &str) {
+        let struct_entry = self.import_identifier_map.get_mut(&String::from(source));
+        match struct_entry {
+            Some(mut struct_entry) => {
+                let struct_vec = struct_entry.value_mut();
+                if !struct_vec.contains(&String::from(type_name)) {
+                    struct_vec.push(String::from(type_name));
+                }
+            },
+            None => {
+                let mut new_s_vec = Vec::new();
+                new_s_vec.push(String::from(type_name));
+                self.import_identifier_map.insert(String::from(source), new_s_vec);
+            },
         }
+    }
 
-        let counter = self.counter.fetch_add(1, Ordering::Relaxed);
-        let name = quote_ident!(format!("imp_{}", counter));
+    pub fn get_import(&self, source: &str) -> Ident {
+        // let cached_counter = self.import_identifier_map.get(&String::from(source));
 
-        let decl = ImportDecl {
-            span: DUMMY_SP,
-            specifiers: vec![ImportSpecifier::Namespace(ImportStarAsSpecifier {
-                local: name,
-                span: DUMMY_SP,
-            })],
-            src: Box::new(Str {
-                span: DUMMY_SP,
-                raw: None,
-                value: source.into(),
-            }),
-            type_only: false,
-            asserts: None,
-        };
-        self.imports.lock().unwrap().push(decl);
-        self.import_identifier_map.insert(String::from(source), counter);
+        // if let Some(counter) = cached_counter {
+        //     return quote_ident!(format!("imp_{}", *counter));
+        // }
 
-        return quote_ident!(format!("imp_{}", counter));
+        // let counter = self.counter.fetch_add(1, Ordering::Relaxed);
+        // let name = quote_ident!(format!("imp_{}", counter));
+
+        // let decl = ImportDecl {
+        //     span: DUMMY_SP,
+        //     specifiers: vec![ImportSpecifier::Namespace(ImportStarAsSpecifier {
+        //         local: name,
+        //         span: DUMMY_SP,
+        //     })],
+        //     src: Box::new(Str {
+        //         span: DUMMY_SP,
+        //         raw: None,
+        //         value: source.into(),
+        //     }),
+        //     type_only: false,
+        //     asserts: None,
+        // };
+        // self.imports.lock().unwrap().push(decl);
+        // self.import_identifier_map.insert(String::from(source), counter);
+
+        return quote_ident!(format!("imp_{}", 0));
     }
 
     pub fn wrap_if_needed(&mut self, modules: Vec<ModuleItem>) -> Vec<ModuleItem> {
@@ -267,16 +319,24 @@ impl<'a> Context<'a> {
 
     pub fn normalize_type_name(&self, name: &str) -> String {
         let name = name.strip_prefix(".").unwrap_or(name);
-        if self.options.namespaces {
-            return name.to_string();
+        if !self.options.with_namespace {
+            let index = name.rfind('.');
+            match index {
+                Some(ind) => {
+                    return String::from(&name[ind+1..])
+                },
+                None => {
+                    return name.to_string()
+                },
+            }
         }
         return name.to_string().replace(".", "_");
     }
 
     pub fn normalize_name(&self, name: &str) -> String {
-        if self.options.namespaces {
-            return name.to_string();
-        }
+        // if self.options.namespaces {
+        //     return name.to_string();
+        // }
         let mut ns = vec![];
         if self.options.with_namespace {
             ns.extend(self.namespace.clone());
@@ -296,10 +356,19 @@ impl<'a> Context<'a> {
         let provided_by = self.find_type_provider(&type_name.to_string());
         if let Some(provided_by) = provided_by {
             if self.name == provided_by {
+                if !self.options.with_namespace {
+                    match type_name.rfind(".") {
+                        Some(index) => {
+                            return quote_ident!(type_name[index+1..]);
+                        },
+                        None => { },
+                    }
+                }
                 return quote_ident!(type_name
                     .strip_prefix(".")
                     .expect("expected type to have leading dot")
-                    .replace(".", "_"));
+                    .replace(".", "_")
+                );
             } else {
                 let import_from =
                     resolve_relative(provided_by.into(), PathBuf::from_str(&self.name).unwrap());
@@ -312,13 +381,14 @@ impl<'a> Context<'a> {
 
                 import_from.push_str(self.options.import_suffix.as_str());
 
-                let import_id = self.get_import(import_from.as_str());
+                // let import_id = self.get_import(import_from.as_str());
                 let type_name = self.normalize_type_name(
                     type_name
                         .strip_prefix(".")
                         .expect("expected type name to have leading dot"),
                 );
-                return quote_ident!(format!("{}.{}", import_id.sym.to_string(), type_name));
+                self.update_import(&type_name.as_str(), &import_from.as_str());
+                return quote_ident!(type_name);
             }
         } else {
             panic!("no proto provides {}", &type_name)

@@ -1,15 +1,7 @@
 syntax = "proto3";
-package struct_pkg;
-
-enum Enum {
-    ENUM_0 = 0;
-    ENUM_1 = 1;
-}
-
-message Common {
-	string common_id = 1;
-	int64 common_type = 2;
-}
+package gen;
+import "common.proto";
+import "enum.proto";
 
 message Struct {
   string field_string = 1;
@@ -24,16 +16,21 @@ message Struct {
   bytes field_bytes = 9;
   repeated bytes field_bytes_list = 10;
 
-  Enum field_enum = 11;
-  repeated Enum field_enum_list = 12;
+  enum_package.Enum field_enum = 100;
+  repeated enum_package.Enum field_enum_list = 101;
+  enum_package.Enum_V2 field_enum_v2 = 102;
+  repeated enum_package.Enum_V2 field_enum_v2_list = 103; 
 
-  Common field_common_struct = 13;
-  repeated Common field_common_struct_list = 14;
+  common_package.Common field_common_struct = 200;
+  repeated common_package.Common field_common_struct_list = 201;
+  common_package.Common_V2 field_common_v2_struct = 202;
+  repeated common_package.Common_V2 field_common_v2_struct_list = 203;
 
-  map<string, string> field_map_string_string = 15;
-  map<string, int32> field_map_string_i32 = 16;
-  map<int64, int64> field_map_i64_i64 = 17;
-  map<int64, string> field_map_i64_string = 18;  
+  map<string, string> field_map_string_string = 300;
+  map<string, int32> field_map_string_i32 = 301;
+  map<int64, int64> field_map_i64_i64 = 302;
+  map<int64, string> field_map_i64_string = 303;  
+  map<int32, string> field_map_i32_string = 304;
 }
 
 

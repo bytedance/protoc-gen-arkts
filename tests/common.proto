@@ -1,0 +1,12 @@
+syntax = "proto3";
+package common_package;
+
+message Common {
+	string common_id = 1;
+	int64 common_type = 2;
+}
+
+message Common_V2 {
+    int32 common_v2_id = 1;
+    map<int32, string> extra = 2;
+}
