@@ -127,8 +127,6 @@ message Struct2 {
 ## Development
 
 ```sh
-- cargo install cargo-patch
-- cargo-patch
 - cargo build
 ```
 when the compilation is completed, the protoc-gen-arkts will appear in target/debug/
